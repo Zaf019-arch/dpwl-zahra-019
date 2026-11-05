@@ -269,4 +269,108 @@ class Penyewa_model
 
     return $success;
   }
+
+  // Manajemen Penyewa (Admin): membaca seluruh data penyewa untuk tabel.
+  // Kolom sandi (hash) sengaja tidak ikut diambil.
+  public function getAll(): array
+  {
+    $sql = "SELECT
+              user_plg,
+              nik,
+              nm_lngkp,
+              no_hp,
+              almt_lngkp,
+              ft_ktp,
+              ft_sim_a
+            FROM t_penyewa
+            ORDER BY user_plg ASC";
+
+    $stmt = $this->db->prepare($sql);
+
+    if (!$stmt) {
+      throw new RuntimeException(
+        'Query daftar penyewa gagal disiapkan.'
+      );
+    }
+
+    if (!$stmt->execute()) {
+      $stmt->close();
+
+      throw new RuntimeException(
+        'Data daftar penyewa gagal diambil.'
+      );
+    }
+
+    $result = $stmt->get_result();
+    $rows = $result->fetch_all(MYSQLI_ASSOC);
+
+    $stmt->close();
+
+    return $rows;
+  }
+
+  // Manajemen Penyewa (Admin): tambah penyewa langsung oleh admin.
+  // Berbeda dari create() (register), di sini foto KTP/SIM boleh langsung terisi.
+  public function createByAdmin(array $data): bool
+  {
+    $sql = "INSERT INTO t_penyewa (
+              user_plg,
+              sandi,
+              nik,
+              nm_lngkp,
+              no_hp,
+              almt_lngkp,
+              ft_ktp,
+              ft_sim_a
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
+    $stmt = $this->db->prepare($sql);
+
+    if (!$stmt) {
+      throw new RuntimeException(
+        'Query tambah penyewa gagal disiapkan.'
+      );
+    }
+
+    $stmt->bind_param(
+      'ssssssss',
+      $data['user_plg'],
+      $data['sandi'],
+      $data['nik'],
+      $data['nm_lngkp'],
+      $data['no_hp'],
+      $data['almt_lngkp'],
+      $data['ft_ktp'],
+      $data['ft_sim_a']
+    );
+
+    $success = $stmt->execute();
+
+    $stmt->close();
+
+    return $success;
+  }
+
+  // Manajemen Penyewa (Admin): hapus penyewa berdasarkan primary key user_plg.
+  public function delete(string $userPlg): bool
+  {
+    $stmt = $this->db->prepare(
+      "DELETE FROM t_penyewa WHERE user_plg = ?"
+    );
+
+    if (!$stmt) {
+      throw new RuntimeException(
+        'Query hapus penyewa gagal disiapkan.'
+      );
+    }
+
+    $stmt->bind_param('s', $userPlg);
+    $stmt->execute();
+
+    $affectedRows = $stmt->affected_rows;
+
+    $stmt->close();
+
+    return $affectedRows > 0;
+  }
 }

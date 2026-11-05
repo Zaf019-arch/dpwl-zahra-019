@@ -9,6 +9,10 @@ class Penyewa_controller extends Controller
 
   public function __construct()
   {
+    // Dibutuhkan oleh Manajemen Penyewa (sisi admin).
+    require_once APPPATH . 'helpers/auth_helper.php';
+    require_once APPPATH . 'helpers/flash_helper.php';
+
     $this->model = new Penyewa_model();
     $this->transaksiModel = new Transaksi_model();
   }
@@ -258,6 +262,395 @@ class Penyewa_controller extends Controller
         'Profil belum berhasil diperbarui. Silakan coba kembali.'
       );
     }
+  }
+
+  // =====================================================================
+  // MANAJEMEN PENYEWA (SISI ADMIN) - CRUD, pola sama dengan Mobil_controller
+  // =====================================================================
+
+  public function index(): void
+  {
+    // Semua halaman/proses Manajemen Penyewa wajib login admin.
+    require_admin_login();
+
+    // Tabel dan form berada pada satu View: admin/penyewa_view.php.
+    $this->view('admin/penyewa_view', [
+      'username' => $_SESSION['admin_username'],
+      'penyewa' => $this->model->getAll(),
+      'flash' => get_flash_message(),
+      'mode' => null,
+      'penyewa_dipilih' => null,
+      'error' => null,
+    ]);
+  }
+
+  private function renderPenyewa(
+    string $mode,
+    ?array $penyewaDipilih = null,
+    ?string $error = null
+  ): void {
+    // Ambil ulang daftar agar tabel tetap tampil saat form gagal divalidasi.
+    $this->view('admin/penyewa_view', [
+      'username' => $_SESSION['admin_username'],
+      'penyewa' => $this->model->getAll(),
+      'flash' => null,
+      'mode' => $mode,
+      'penyewa_dipilih' => $penyewaDipilih,
+      'error' => $error,
+    ]);
+  }
+
+  public function tambah(): void
+  {
+    require_admin_login();
+
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+      $this->renderPenyewa('tambah', []);
+      return;
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+      http_response_code(405);
+      exit('Metode request tidak diizinkan.');
+    }
+
+    $userPlg = trim((string) ($_POST['user_plg'] ?? ''));
+    $sandi = (string) ($_POST['sandi'] ?? '');
+    $nik = trim((string) ($_POST['nik'] ?? ''));
+    $nama = trim((string) ($_POST['nm_lngkp'] ?? ''));
+    $noHp = trim((string) ($_POST['no_hp'] ?? ''));
+    $alamat = trim((string) ($_POST['almt_lngkp'] ?? ''));
+
+    // Data untuk mengisi ulang form. Password tidak pernah dikembalikan ke View.
+    $old = [
+      'user_plg' => $userPlg,
+      'nik' => $nik,
+      'nm_lngkp' => $nama,
+      'no_hp' => $noHp,
+      'almt_lngkp' => $alamat,
+      'ft_ktp' => null,
+      'ft_sim_a' => null,
+    ];
+
+    $error = $this->validatePenyewaInput(
+      $userPlg,
+      $sandi,
+      $nik,
+      $nama,
+      $noHp,
+      $alamat,
+      false
+    );
+
+    if ($error !== null) {
+      $this->renderPenyewa('tambah', $old, $error);
+      return;
+    }
+
+    try {
+      // user_plg adalah PRIMARY KEY, cek lebih dulu sebelum unggah foto.
+      if ($this->model->findByUserPlg($userPlg) !== null) {
+        $this->renderPenyewa('tambah', $old, 'Username sudah digunakan.');
+        return;
+      }
+    } catch (Throwable $e) {
+      error_log('Cek username penyewa gagal: ' . $e->getMessage());
+      $this->renderPenyewa(
+        'tambah',
+        $old,
+        'Data penyewa belum dapat diproses. Silakan coba kembali.'
+      );
+      return;
+    }
+
+    $upload = $this->uploadDokumenPenyewa();
+
+    if (!$upload['success']) {
+      $this->renderPenyewa('tambah', $old, $upload['error']);
+      return;
+    }
+
+    // Password tidak disimpan sebagai plainteks.
+    $passwordHash = password_hash($sandi, PASSWORD_DEFAULT);
+
+    try {
+      if ($passwordHash === false) {
+        throw new RuntimeException('Pembuatan hash password gagal.');
+      }
+
+      $success = $this->model->createByAdmin([
+        'user_plg' => $userPlg,
+        'sandi' => $passwordHash,
+        'nik' => $nik,
+        'nm_lngkp' => $nama,
+        'no_hp' => $noHp,
+        'almt_lngkp' => $alamat,
+        'ft_ktp' => $upload['foto']['ft_ktp'],
+        'ft_sim_a' => $upload['foto']['ft_sim_a'],
+      ]);
+    } catch (Throwable $e) {
+      error_log('Tambah penyewa gagal: ' . $e->getMessage());
+      $success = false;
+    }
+
+    if (!$success) {
+      // Foto yang sudah terlanjur diunggah dibersihkan agar tidak jadi sampah.
+      $this->hapusFotoPenyewa($upload['uploaded']);
+
+      $this->renderPenyewa(
+        'tambah',
+        $old,
+        'Data penyewa gagal disimpan. Periksa kembali data yang dimasukkan.'
+      );
+      return;
+    }
+
+    // PRG: POST -> flash -> redirect -> GET /admin/penyewa.
+    set_flash_message('success', 'Data penyewa berhasil ditambahkan.');
+    header('Location: ' . site_url('admin/penyewa'));
+    exit;
+  }
+
+  public function ubah(string $userPlg): void
+  {
+    require_admin_login();
+
+    $lama = $this->model->getProfil($userPlg);
+
+    if ($lama === null) {
+      set_flash_message('danger', 'Data penyewa tidak ditemukan.');
+      header('Location: ' . site_url('admin/penyewa'));
+      exit;
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+      $this->renderPenyewa('ubah', $lama);
+      return;
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+      http_response_code(405);
+      exit('Metode request tidak diizinkan.');
+    }
+
+    // user_plg tetap dari parameter route; tidak bisa diubah dari form.
+    $sandi = (string) ($_POST['sandi'] ?? '');
+    $nik = trim((string) ($_POST['nik'] ?? ''));
+    $nama = trim((string) ($_POST['nm_lngkp'] ?? ''));
+    $noHp = trim((string) ($_POST['no_hp'] ?? ''));
+    $alamat = trim((string) ($_POST['almt_lngkp'] ?? ''));
+
+    $tampil = array_merge($lama, [
+      'nik' => $nik,
+      'nm_lngkp' => $nama,
+      'no_hp' => $noHp,
+      'almt_lngkp' => $alamat,
+    ]);
+
+    $error = $this->validatePenyewaInput(
+      $userPlg,
+      $sandi,
+      $nik,
+      $nama,
+      $noHp,
+      $alamat,
+      true
+    );
+
+    if ($error !== null) {
+      $this->renderPenyewa('ubah', $tampil, $error);
+      return;
+    }
+
+    $upload = $this->uploadDokumenPenyewa();
+
+    if (!$upload['success']) {
+      $this->renderPenyewa('ubah', $tampil, $upload['error']);
+      return;
+    }
+
+    // Foto lama dipertahankan bila tidak ada file baru.
+    $ftKtp = $upload['foto']['ft_ktp'] ?? ($lama['ft_ktp'] ?? null);
+    $ftSimA = $upload['foto']['ft_sim_a'] ?? ($lama['ft_sim_a'] ?? null);
+
+    try {
+      // Password kosong = hash lama dipertahankan.
+      $passwordHash = null;
+
+      if ($sandi !== '') {
+        $passwordHash = password_hash($sandi, PASSWORD_DEFAULT);
+
+        if ($passwordHash === false) {
+          throw new RuntimeException('Pembuatan hash password gagal.');
+        }
+      }
+
+      $success = $this->model->updateProfil(
+        $userPlg,
+        $nik,
+        $nama,
+        $noHp,
+        $alamat,
+        $ftKtp,
+        $ftSimA,
+        $passwordHash
+      );
+    } catch (Throwable $e) {
+      error_log('Ubah penyewa gagal: ' . $e->getMessage());
+      $success = false;
+    }
+
+    if (!$success) {
+      $this->hapusFotoPenyewa($upload['uploaded']);
+
+      $this->renderPenyewa(
+        'ubah',
+        $tampil,
+        'Data penyewa gagal diperbarui. Periksa kembali data yang dimasukkan.'
+      );
+      return;
+    }
+
+    // Foto lama baru dihapus SETELAH database berhasil diperbarui.
+    $fotoLama = [];
+
+    if ($upload['foto']['ft_ktp'] !== null && !empty($lama['ft_ktp'])) {
+      $fotoLama[] = ['ft_ktp', $lama['ft_ktp']];
+    }
+
+    if ($upload['foto']['ft_sim_a'] !== null && !empty($lama['ft_sim_a'])) {
+      $fotoLama[] = ['ft_sim_a', $lama['ft_sim_a']];
+    }
+
+    $this->hapusFotoPenyewa($fotoLama);
+
+    set_flash_message('success', 'Data penyewa berhasil diperbarui.');
+    header('Location: ' . site_url('admin/penyewa'));
+    exit;
+  }
+
+  public function hapus(string $userPlg): void
+  {
+    require_admin_login();
+
+    // DELETE mengubah data, jadi wajib POST.
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+      http_response_code(405);
+      exit('Metode request tidak diizinkan.');
+    }
+
+    $penyewa = $this->model->getProfil($userPlg);
+
+    if ($penyewa === null) {
+      set_flash_message('danger', 'Data penyewa tidak ditemukan.');
+      header('Location: ' . site_url('admin/penyewa'));
+      exit;
+    }
+
+    $pesanGagal = 'Data penyewa gagal dihapus.';
+
+    try {
+      $success = $this->model->delete($userPlg);
+    } catch (Throwable $e) {
+      error_log('Hapus penyewa gagal: ' . $e->getMessage());
+      $success = false;
+
+      // 1451 = baris masih dirujuk tabel lain (foreign key), mis. riwayat sewa.
+      if ($e instanceof mysqli_sql_exception && (int) $e->getCode() === 1451) {
+        $pesanGagal = 'Penyewa tidak dapat dihapus karena masih memiliki data transaksi sewa.';
+      }
+    }
+
+    if (!$success) {
+      set_flash_message('danger', $pesanGagal);
+      header('Location: ' . site_url('admin/penyewa'));
+      exit;
+    }
+
+    // Berkas KTP/SIM dihapus hanya setelah baris database berhasil dihapus.
+    $fotoUntukDihapus = [];
+
+    if (!empty($penyewa['ft_ktp'])) {
+      $fotoUntukDihapus[] = ['ft_ktp', $penyewa['ft_ktp']];
+    }
+
+    if (!empty($penyewa['ft_sim_a'])) {
+      $fotoUntukDihapus[] = ['ft_sim_a', $penyewa['ft_sim_a']];
+    }
+
+    $this->hapusFotoPenyewa($fotoUntukDihapus);
+
+    set_flash_message('success', 'Data penyewa berhasil dihapus.');
+    header('Location: ' . site_url('admin/penyewa'));
+    exit;
+  }
+
+  // Validasi sisi peladen untuk tambah (isEdit=false) dan ubah (isEdit=true).
+  private function validatePenyewaInput(
+    string $userPlg,
+    string $sandi,
+    string $nik,
+    string $nama,
+    string $noHp,
+    string $alamat,
+    bool $isEdit
+  ): ?string {
+    // Username hanya divalidasi saat tambah; saat ubah ia kunci record.
+    if (
+      !$isEdit &&
+      !preg_match('/\A[A-Za-z0-9._-]{1,15}\z/', $userPlg)
+    ) {
+      return 'Username harus 1–15 karakter: huruf, angka, titik, garis bawah, atau tanda hubung.';
+    }
+
+    // Saat tambah password wajib; saat ubah boleh kosong (tidak diganti).
+    if (!$isEdit || $sandi !== '') {
+      if (strlen($sandi) < 8) {
+        return 'Password minimal 8 karakter.';
+      }
+
+      if (strlen($sandi) > 72) {
+        return 'Password maksimal 72 byte.';
+      }
+    }
+
+    // NIK, nama, no HP, alamat memakai aturan yang sama dengan profil.
+    return $this->validateProfilInput($nik, $nama, $noHp, $alamat);
+  }
+
+  // Mengunggah foto KTP dan SIM A sekaligus. Bila salah satu gagal,
+  // file yang sudah terlanjur terunggah langsung dihapus kembali.
+  private function uploadDokumenPenyewa(): array
+  {
+    $foto = ['ft_ktp' => null, 'ft_sim_a' => null];
+    $uploaded = [];
+
+    foreach (['ft_ktp', 'ft_sim_a'] as $field) {
+      $upload = $this->uploadFotoPenyewa($field);
+
+      if (!$upload['success']) {
+        $this->hapusFotoPenyewa($uploaded);
+
+        return [
+          'success' => false,
+          'foto' => $foto,
+          'uploaded' => [],
+          'error' => $upload['error'],
+        ];
+      }
+
+      if ($upload['filename'] !== null) {
+        $foto[$field] = $upload['filename'];
+        $uploaded[] = $upload['filename'];
+      }
+    }
+
+    return [
+      'success' => true,
+      'foto' => $foto,
+      'uploaded' => $uploaded,
+      'error' => null,
+    ];
   }
 
   private function validateProfilInput(
