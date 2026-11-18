@@ -47,3 +47,15 @@ $route['transaksi/hapus'] = 'Transaksi_controller/hapus';
 $route['transaksi/hapus/(:any)'] = 'Transaksi_controller/hapus/$1';
 $route['transaksi/checkout'] = 'Transaksi_controller/checkout';
 
+// Route P9 - Pembayaran DP (penyewa) dan Verifikasi Pembayaran (admin)
+// Kode transaksi/pembayaran memuat garis miring (INV/..., PAY/...), sehingga
+// dikirim lewat query string atau body POST, bukan segmen URL.
+$route['transaksi/riwayat'] = 'Pembayaran_controller/riwayat';
+$route['transaksi/pembayaran'] = 'Pembayaran_controller/pembayaran';
+$route['transaksi/pembayaran/unggah'] = 'Pembayaran_controller/unggah';
+$route['transaksi/bukti'] = 'Pembayaran_controller/bukti';
+$route['admin/pembayaran'] = 'Verifikasi_controller/index';
+$route['admin/pembayaran/detail'] = 'Verifikasi_controller/detail';
+$route['admin/pembayaran/verifikasi'] = 'Verifikasi_controller/verifikasi';
+$route['admin/pembayaran/tolak'] = 'Verifikasi_controller/tolak';
+$route['admin/pembayaran/bukti'] = 'Verifikasi_controller/bukti';
