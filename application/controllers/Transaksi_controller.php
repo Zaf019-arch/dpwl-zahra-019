@@ -339,9 +339,10 @@ class Transaksi_controller extends Controller
         );
       }
 
+      // P9: setelah checkout, penyewa diarahkan ke halaman pembayaran DP.
       $_SESSION['flash_penyewa_nav'] =
-        'Checkout berhasil. Transaksi diajukan dan menunggu persetujuan admin.';
-      header('Location: ' . site_url('katalog'));
+        'Checkout berhasil. Transaksi diajukan. Silakan unggah bukti pembayaran DP agar dapat diverifikasi admin.';
+      header('Location: ' . site_url('transaksi/pembayaran?kode_sewa=' . rawurlencode($kodeSewa)));
       exit;
     } catch (Throwable $e) {
       error_log('Checkout transaksi gagal: ' . $e->getMessage());
