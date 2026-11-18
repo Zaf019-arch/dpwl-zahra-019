@@ -89,7 +89,7 @@ $kodeSewa = (string) ($keranjang['kode_sewa'] ?? '');
               <span>Sisa setelah DP</span>
               <strong class="text-nowrap"><?= $e($formatRupiah($sisa)) ?></strong>
             </div>
-            <p class="small text-muted mt-3 mb-0">Saat konfirmasi diajukan, sistem mencatat DP ini sebagai pembayaran transfer berstatus pending. Bukti pembayaran dan verifikasi dilakukan pada P9.</p>
+            <p class="small text-muted mt-3 mb-0">Saat konfirmasi diajukan, sistem mencatat DP ini sebagai pembayaran transfer berstatus pending. Setelah transaksi diajukan, unggah bukti transfer DP pada halaman pembayaran agar dapat diverifikasi admin.</p>
           </div>
         </div>
       </div>
