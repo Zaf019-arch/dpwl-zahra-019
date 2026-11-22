@@ -19,8 +19,8 @@ class Pembayaran_model
   // di basis data Anda. periksaSkema() memeriksanya otomatis sebelum setiap
   // operasi tulis dan menolak bila tidak cocok, sehingga tidak ada nilai
   // kosong yang tersimpan secara diam-diam.
-  public const STATUS_TERVERIFIKASI = 'terverifikasi';
-  public const STATUS_DITOLAK = 'ditolak';
+  public const STATUS_TERVERIFIKASI = 'valid';
+  public const STATUS_DITOLAK = 'invalid';
 
   // TERBUKTI: nilai yang ditulis checkout() pada t_sewa.
   private const STATUS_SEWA_DIAJUKAN = 'diajukan';

@@ -3,7 +3,7 @@
 /** @var string $username */
 #$adminlte_url = base_url('../template/AdminLTE-2.4.18/');
 // P7 langsung menjadi ini, karena base url adalah localhost/dpwl-nim/
-//  href="http://localhost/dpwl-0344300002/../template/AdminLTE-2.4.18/bower_components/bootstrap/dist/css/bootstrap.min.css">
+//  href="http://localhost/dpwl-2522500019/../template/AdminLTE-2.4.18/bower_components/bootstrap/dist/css/bootstrap.min.css">
 $adminlte_url = 'http://localhost/template/AdminLTE-2.4.18/';
 
 ?>
